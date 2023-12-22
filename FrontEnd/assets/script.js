@@ -9,7 +9,7 @@ function removeAllChildNodes(htmlElement) {
 function toKebabCase(text) {
     text = text.toLowerCase();
     text = text.replaceAll(/.'/g, ""); // enlève les >> l' d' etc.
-    text = text.replaceAll(/\p{Punctuation}/gu, ""); // enlève les isgnes de ponctuation
+    text = text.replaceAll(/\p{Punctuation}/gu, ""); // enlève les signes de ponctuation
     // if there is two or more consecutive spaces reduce the space to one space
     // this is to avoid having more than one hyphen during the next replaceAll below this one
     text = text.replaceAll(/\s{2,}/g, " ");
@@ -51,30 +51,33 @@ function createGalleryItemList(itemList) {
 }
 
 ////////////////// filtres
-function createFilterButtonList(data) {
+function createFilterButtonList(dataObjectArray) {
     const buttonContainerElement = document.body.querySelector("#portfolio .filters");
     const templateElement = document.getElementById("template--filter-button");
     const fragmentContainer = document.createDocumentFragment();
     // ajoute le bouton "Tous" car il n'est pas dans les données
     {
-        const allButton = createButton("Tous", "all", true);
+        // category 0 = all
+        const allButton = createFilterButton("Tous", 0, true);
         fragmentContainer.append(allButton);
     }
-    for(let i = 0; i !== data.length; ++ i) {
-        const name = data[i]["name"];
-        const newButton = createButton(name, toKebabCase(name));
+    for(let i = 0; i !== dataObjectArray.length; ++ i) {
+        const name = dataObjectArray[i]["name"];
+        const newButton = createFilterButton(name,  + dataObjectArray[i]["id"]);
         fragmentContainer.append(newButton);
     }
 
     removeAllChildNodes(buttonContainerElement);
     buttonContainerElement.append(fragmentContainer);
     
-    function createButton(text, value, checked = false) {
+    function createFilterButton(text, categoryId, checked = false) {
         const newButton = templateElement.content.cloneNode(true);
+        // renomme l'id pour ne pas que ce soit un simple chiffre (améliore la clarté du code)
+        categoryId = "category-" + categoryId;
         {
             const radioInput = newButton.querySelector("input");
-            radioInput.setAttribute("id", value);
-            radioInput.setAttribute("value", value);
+            radioInput.setAttribute("id", categoryId);
+            radioInput.setAttribute("value", categoryId);
             // par défaut
             radioInput.setAttribute("name", "filter");
 
@@ -85,7 +88,7 @@ function createFilterButtonList(data) {
         }
         {
             const label = newButton.querySelector("label");
-            label.setAttribute("for", value);
+            label.setAttribute("for", categoryId);
             label.textContent = text;
         }
         return newButton;
@@ -94,20 +97,43 @@ function createFilterButtonList(data) {
 
 ////////////////// main
 
-async function updateFilterButtonList(categoryListURL) {
+async function initFilterButtonList(categoryListURL) {
     const response = await fetch(categoryListURL);
     // on reçoit les données sous la forme d'un tableau d'objets
     const dataArray = await response.json();
     createFilterButtonList(dataArray);
 }
 
-async function updateGallery(updateURL) {
+
+async function createGallery(updateURL, callback) {
     const response = await fetch(updateURL);
     // on reçoit les données sous la forme d'un tableau d'objets
-    const dataArray = await response.json();
-    createGalleryItemList(dataArray);
+    const galleryData = await response.json();
+    createGalleryItemList(galleryData);
+    callback(galleryData);
 }
 
-updateFilterButtonList("http://localhost:5678/api/categories");
+
+
+initFilterButtonList("http://localhost:5678/api/categories");
 // TODO : voir si l'on pourrait améliorer notre appel à l'API afin de ne recevoir que ce qui nous intéresse, à savoir l'URL de l'image et le titre...
-updateGallery("http://localhost:5678/api/works");
+createGallery("http://localhost:5678/api/works", function(galleryData) {
+    // TODO : il vaudrait mieux vérifier lequel des radio buttons est checked, là je sais que c'est 0 (pour le filtre "Tous")
+    let currentCategoryID_int = 0;
+    document.addEventListener("change", function(event) {
+        if(event.target.name === "filter") {
+            const categoryID_str = event.target.id;
+            const categoryID_int = parseInt(categoryID_str.substring(categoryID_str.lastIndexOf("-") + 1));
+            /////////////////////////////////////////////////////////
+            // pas la peine de lancer un rafraîchissement de la liste
+            if(categoryID_int === currentCategoryID_int) return;
+            /////////////////////////////////////////////////////////
+            currentCategoryID_int = categoryID_int;
+            const newGalleryData = categoryID_int === 0 ? galleryData : galleryData.filter(function(item) {
+                return item["categoryId"] === categoryID_int;
+            });
+            createGalleryItemList(newGalleryData);
+        }
+    });
+});
+
